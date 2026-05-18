@@ -1,29 +1,43 @@
+# Core Data & ML
 pandas
 numpy
-ipykernel
-transformers
 torch
+transformers
 accelerate
-ollama
-tabulate
-openai
-python-dotenv
-matplotlib
-seaborn
-fastapi
-gradio
-blob
+bitsandbytes
+tqdm
+
+# NLP & Embeddings
 sentence-transformers
-hf_xet
-bs4
-chromadb
-langchainhub
-python_dotenv
-pymupdf4llm
-langchain
-langchain-community
-langchain_openai
-langchain-openai
-langchain_chroma
+tokenizers
 tiktoken
-unstructured[md]
+
+# RAG & Vector DB
+qdrant-client
+langchain
+langchain-core
+langchain-community
+langchain-huggingface
+langchain-qdrant
+langchain-openai
+langchain-text-splitters
+
+# Models & APIs
+openai
+google-genai
+pydantic
+
+# Document Parsing
+pymupdf4llm
+docling
+xmltodict
+
+# Evaluation
+ragas
+datasets
+
+# Environment & Notebooks
+python-dotenv
+ipykernel
+ipywidgets
+IPython
