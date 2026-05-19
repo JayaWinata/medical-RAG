@@ -54,11 +54,11 @@ def main():
             "device": "cuda",
             "trust_remote_code": True,
             "token": HF_TOKEN,
-            "normalize_embeddings": True
         },
         encode_kwargs={
             "batch_size": BATCH_SIZE,
-            "show_progress_bar": True
+            "show_progress_bar": True,
+            "normalize_embeddings": True
         }
     )
 
