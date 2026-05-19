@@ -51,10 +51,10 @@ def main():
     embedding_model = HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL_ID,
         model_kwargs={
-            "device_map": "auto",
+            "device": "cuda",
             "trust_remote_code": True,
             "token": HF_TOKEN,
-            "quantization_config": bnb_config
+            "normalize_embeddings": True
         },
         encode_kwargs={
             "batch_size": BATCH_SIZE,
