@@ -19,8 +19,8 @@ class Config:
     LANGSMITH_ENDPOINT = os.getenv('LANGSMITH_ENDPOINT', "https://api.smith.langchain.com")
     LANGSMITH_PROJECT = os.getenv('LANGSMITH_PROJECT', "skripsi_fixed")
 
-    EMBEDDING_MODEL = "google/embeddinggemma-300m"
-    EMBEDDING_DIM = 512
+    EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-8B"
+    EMBEDDING_DIM = 4096
     BATCH_SIZE = 4
     MODEL_ID = "Qwen/Qwen3-4B-Instruct-2507"
 
@@ -36,7 +36,7 @@ class Config:
 
     # --- File Paths ---
     # Path to the enriched medical documents (Pickle)
-    PICKLE_PATH = "knowledge-base/2026_04_29__1545_medical_documents_enriched.pkl"
+    PICKLE_PATH = "2026_04_29__1545_medical_documents_enriched.pkl"
     DATA_FOLDER_PATH = 'knowledge-base/processed-1'
     RAW_DATA_PATH = 'knowledge-base/raw'
     PROCESSED_DATA_PATH = 'knowledge-base/processed'
