@@ -17,7 +17,7 @@ import torch
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
-from config import Config
+from config.config import Config
 
 # Load configuration from config.py
 QDRANT_URL = Config.QDRANT_URL
@@ -204,10 +204,11 @@ ISI LAPORAN:
     embedding_model = HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL_ID,
         model_kwargs={
-            "device_map": "auto",
+            "device": "cuda",
             "trust_remote_code": True,
             "token": HF_TOKEN,
-            "quantization_config": bnb_config
+            "quantization_config": bnb_config,
+            "torch_dtype": torch.float16,
         },
         encode_kwargs={
             "batch_size": 4,

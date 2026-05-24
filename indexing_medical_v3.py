@@ -12,7 +12,7 @@ from qdrant_client.http import models
 from transformers import BitsAndBytesConfig
 import torch
 
-from config import Config
+from config.config import Config
 
 # Load configuration from config.py
 QDRANT_URL = Config.QDRANT_URL
@@ -23,6 +23,11 @@ EMBEDDING_DIM = Config.EMBEDDING_DIM if hasattr(Config, 'EMBEDDING_DIM') else 25
 BATCH_SIZE = Config.BATCH_SIZE if hasattr(Config, 'BATCH_SIZE') else 4
 COLLECTION_NAME = Config.COLLECTION_NAME
 PICKLE_BACKUP_PATH = Config.PICKLE_PATH
+
+def batch_generator(data: List, batch_size: int):
+    """Yield successive n-sized batches from data."""
+    for i in range(0, len(data), batch_size):
+        yield data[i : i + batch_size]
 
 def main():
     # Performance optimization for PyTorch
@@ -54,6 +59,8 @@ def main():
             "device": "cuda",
             "trust_remote_code": True,
             "token": HF_TOKEN,
+            "quantization_config": bnb_config,
+            "torch_dtype": torch.float16,
         },
         encode_kwargs={
             "batch_size": BATCH_SIZE,
@@ -67,33 +74,44 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    client_qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+    client_qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=300)
 
-    if not client_qdrant.collection_exists(COLLECTION_NAME):
-        print(f"   - Membuat collection baru: {COLLECTION_NAME}")
-        client_qdrant.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=models.VectorParams(
-                size=EMBEDDING_DIM,
-                distance=models.Distance.COSINE
-            ),
-            metadata={
-                "embedding_model": EMBEDDING_MODEL_ID,
-                "created_at": datetime.datetime.now().isoformat()
-            }
-        )
-
-    print(f"🚀 Sedang mengupload {len(enriched_documents)} chunks ke Qdrant...")
-    
-    vector_store = QdrantVectorStore.from_documents(
-        documents=enriched_documents,
-        embedding=embedding_model,
-        url=QDRANT_URL,
-        api_key=QDRANT_API_KEY,
+    # Recreate collection to ensure fresh indexing
+    if client_qdrant.collection_exists(COLLECTION_NAME):
+        print(f"   - Menghapus collection lama: {COLLECTION_NAME}")
+        client_qdrant.delete_collection(COLLECTION_NAME)
+        
+    print(f"   - Membuat collection baru: {COLLECTION_NAME}")
+    client_qdrant.create_collection(
         collection_name=COLLECTION_NAME,
-        force_recreate=True,
-        batch_size=BATCH_SIZE
+        vectors_config=models.VectorParams(
+            size=EMBEDDING_DIM,
+            distance=models.Distance.COSINE
+        ),
+        metadata={
+            "embedding_model": EMBEDDING_MODEL_ID,
+            "created_at": datetime.datetime.now().isoformat()
+        }
     )
+
+    # Initialize VectorStore
+    vector_store = QdrantVectorStore(
+        client=client_qdrant,
+        collection_name=COLLECTION_NAME,
+        embedding=embedding_model,
+    )
+
+    print(f"🚀 Sedang mengupload {len(enriched_documents)} chunks ke Qdrant dalam batch {BATCH_SIZE}...")
+    
+    total_batches = (len(enriched_documents) + BATCH_SIZE - 1) // BATCH_SIZE
+    for i, batch in enumerate(batch_generator(enriched_documents, BATCH_SIZE)):
+        print(f"   📤 Mengupload batch {i+1}/{total_batches} ({len(batch)} documents)...")
+        vector_store.add_documents(batch)
+        
+        # Periodic memory cleanup after each batch
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     print(f"\n✨ SELESAI! {len(enriched_documents)} chunks berhasil masuk ke Qdrant.")
 

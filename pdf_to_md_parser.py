@@ -2,7 +2,7 @@ import os
 import time
 from pathlib import Path
 from docling.document_converter import DocumentConverter
-from config import Config
+from config.config import Config
 
 def batch_convert_pdfs(input_dir, output_dir):
     """

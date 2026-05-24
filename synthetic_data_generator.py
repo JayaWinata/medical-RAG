@@ -5,7 +5,7 @@ import pickle
 from openai import OpenAI
 from tqdm import tqdm
 from dotenv import load_dotenv
-from config import Config
+from config.config import Config
 
 # Load environment variables
 load_dotenv()

@@ -1,6 +1,6 @@
 import os
 import glob
-from config import Config
+from config.config import Config
 
 # List of noise strings to remove from Markdown files
 TEXT_TO_REMOVE = [

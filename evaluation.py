@@ -4,11 +4,11 @@ import os
 import numpy as np
 from datasets import Dataset
 from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy
+from ragas.metrics import faithfulness, answer_relevancy, context_precision, context_recall
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
-from config import Config
+from config.config import Config
 
 def load_jsonl(path):
     """Loads a JSONL file into a pandas DataFrame."""
@@ -68,8 +68,6 @@ def main():
     evaluator_embeddings = LangchainEmbeddingsWrapper(langchain_embeddings)
 
     K_VALUE = Config.TOP_K
-    # In the notebook this was hardcoded, using the notebook value for default if config is different
-    # But usually config should be the source of truth.
     FILEPATH = f"knowledge-base/20260429_1829_rag_responses_dataset_k3.jsonl"
     
     if not os.path.exists(FILEPATH):
@@ -79,6 +77,17 @@ def main():
     print(f"1. Loading evaluation data from {FILEPATH}...")
     df = load_jsonl(FILEPATH)
     print(f"Total rows loaded: {len(df)}\n")
+
+    # Handle nested baseline/fusion columns
+    if 'baseline' in df.columns and isinstance(df['baseline'].iloc[0], dict):
+        df['baseline_answer'] = df['baseline'].apply(lambda x: x.get('answer') if isinstance(x, dict) else None)
+        df['baseline_contexts_metadata'] = df['baseline'].apply(lambda x: x.get('metadata') if isinstance(x, dict) else None)
+        df['baseline_retrieved_contexts'] = df['baseline'].apply(lambda x: x.get('contexts') if isinstance(x, dict) else None)
+        
+    if 'fusion' in df.columns and isinstance(df['fusion'].iloc[0], dict):
+        df['fusion_answer'] = df['fusion'].apply(lambda x: x.get('answer') if isinstance(x, dict) else None)
+        df['fusion_contexts_metadata'] = df['fusion'].apply(lambda x: x.get('metadata') if isinstance(x, dict) else None)
+        df['fusion_retrieved_contexts'] = df['fusion'].apply(lambda x: x.get('contexts') if isinstance(x, dict) else None)
 
     # Extract Ground Truth IDs from metadata
     df['ground_truth_ids'] = df['chunk_metadata'].apply(
@@ -101,12 +110,9 @@ def main():
     # 2. Calculate Retrieval Metrics
     print(f"2. Calculating Retrieval Metrics for K={K_VALUE}...")
     
-    # Baseline Metrics
     df[['baseline_Precision@K', 'baseline_Recall@K', 'baseline_MRR@K']] = df.apply(
         lambda row: calc_retrieval_metrics(row, 'baseline_retrieved_ids', k=K_VALUE), axis=1
     )
-
-    # Fusion Metrics
     df[['fusion_Precision@K', 'fusion_Recall@K', 'fusion_MRR@K']] = df.apply(
         lambda row: calc_retrieval_metrics(row, 'fusion_retrieved_ids', k=K_VALUE), axis=1
     )
@@ -114,80 +120,79 @@ def main():
     # 3. Prepare data for Ragas evaluation
     print("\n3. Preparing data for Ragas evaluation (LLM-as-a-Judge)...")
 
-    # Format Dataset for Ragas Baseline
+    def format_contexts(contexts):
+        if isinstance(contexts, list):
+            # Ragas expects list of strings (the page_content)
+            # If they are LangChain Documents, extract page_content, else use as is
+            return [getattr(c, 'page_content', str(c)) for c in contexts]
+        return []
+
     dataset_baseline = Dataset.from_dict({
         "question": df["question"].tolist(),
         "answer": df["clean_baseline_answer"].tolist(),
-        "contexts": df["baseline_retrieved_contexts"].tolist(),
+        "contexts": [format_contexts(c) for c in df["baseline_retrieved_contexts"]],
         "ground_truth": df["ground_truth"].tolist()
     })
 
-    # Format Dataset for Ragas Fusion
     dataset_fusion = Dataset.from_dict({
         "question": df["question"].tolist(),
         "answer": df["clean_fusion_answer"].tolist(),
-        "contexts": df["fusion_retrieved_contexts"].tolist(),
+        "contexts": [format_contexts(c) for c in df["fusion_retrieved_contexts"]],
         "ground_truth": df["ground_truth"].tolist()
     })
 
+    metrics = [faithfulness, answer_relevancy, context_precision, context_recall]
+
     print("\n> Running Ragas Evaluation for BASELINE...")
     ragas_result_baseline = evaluate(
-        dataset_baseline,
-        metrics=[faithfulness, answer_relevancy],
-        llm=evaluator_llm,
-        embeddings=evaluator_embeddings
+        dataset_baseline, metrics=metrics, llm=evaluator_llm, embeddings=evaluator_embeddings
     )
 
     print("\n> Running Ragas Evaluation for FUSION...")
     ragas_result_fusion = evaluate(
-        dataset_fusion,
-        metrics=[faithfulness, answer_relevancy],
-        llm=evaluator_llm,
-        embeddings=evaluator_embeddings
+        dataset_fusion, metrics=metrics, llm=evaluator_llm, embeddings=evaluator_embeddings
     )
 
     print("\n" + "="*50)
     print(f"FINAL EVALUATION RESULTS (Top-K = {K_VALUE})")
     print("="*50)
 
-    df_ragas_baseline = ragas_result_baseline.to_pandas()
-    df_ragas_fusion = ragas_result_fusion.to_pandas()
-
-    # Calculate means
-    baseline_faithfulness_mean = df_ragas_baseline['faithfulness'].mean()
-    baseline_answer_rel_mean = df_ragas_baseline['answer_relevancy'].mean()
-
-    fusion_faithfulness_mean = df_ragas_fusion['faithfulness'].mean()
-    fusion_answer_rel_mean = df_ragas_fusion['answer_relevancy'].mean()
+    res_b = ragas_result_baseline.to_pandas()
+    res_f = ragas_result_fusion.to_pandas()
 
     summary_df = pd.DataFrame({
         "Metrik": [
-            f"Context Recall@{K_VALUE}", 
-            f"Context Precision@{K_VALUE}", 
-            f"MRR@{K_VALUE}", 
+            f"Recall (Manual)@{K_VALUE}", 
+            f"Precision (Manual)@{K_VALUE}", 
+            f"MRR (Manual)@{K_VALUE}", 
             "Faithfulness (Ragas)", 
-            "Answer Relevancy (Ragas)"
+            "Answer Relevancy (Ragas)",
+            "Context Precision (Ragas)",
+            "Context Recall (Ragas)"
         ],
         "RAG Baseline": [
             df['baseline_Recall@K'].mean(),
             df['baseline_Precision@K'].mean(),
             df['baseline_MRR@K'].mean(),
-            baseline_faithfulness_mean,
-            baseline_answer_rel_mean
+            res_b['faithfulness'].mean(),
+            res_b['answer_relevancy'].mean(),
+            res_b['context_precision'].mean(),
+            res_b['context_recall'].mean()
         ],
         "RAG Fusion": [
             df['fusion_Recall@K'].mean(),
             df['fusion_Precision@K'].mean(),
             df['fusion_MRR@K'].mean(),
-            fusion_faithfulness_mean,
-            fusion_answer_rel_mean
+            res_f['faithfulness'].mean(),
+            res_f['answer_relevancy'].mean(),
+            res_f['context_precision'].mean(),
+            res_f['context_recall'].mean()
         ]
     })
 
     print(summary_df.to_string(index=False))
 
-    # 4. Save results
-    output_file = f'evaluation_@{K_VALUE}.csv'
+    output_file = f'evaluation_@{K_VALUE}_improved.csv'
     summary_df.to_csv(output_file, index=False)
     print(f"\nSummary results saved to {output_file}")
 
