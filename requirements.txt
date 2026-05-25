@@ -37,6 +37,7 @@ xmltodict
 ragas
 datasets
 rank_bm25
+deepeval
 
 # Environment & Notebooks
 python-dotenv
